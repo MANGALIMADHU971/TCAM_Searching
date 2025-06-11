@@ -1,0 +1,62 @@
+module tcam_line #(
+    parameter KEY_WIDTH = 16
+)(
+    input [KEY_WIDTH-1:0] key,
+    input [KEY_WIDTH-1:0] stored_key,
+    input [KEY_WIDTH-1:0] xmask,
+    output match
+);
+    assign match = ((key^stored_key) & ~xmask);
+endmodule
+
+module Another_tcam_array #(
+    parameter KEY_WIDTH = 16,
+    parameter DEPTH = 16
+)(
+    input clk,
+    input rst,
+    input write_en,
+    input [$clog2(DEPTH)-1:0] write_addr,
+    input [KEY_WIDTH-1:0] write_data,
+    input [KEY_WIDTH-1:0] search_key,
+    input search_en,
+    output reg [$clog2(DEPTH)-1:0] match_addr,
+    output reg match_found
+);
+    reg [KEY_WIDTH-1:0] mem [0:DEPTH-1];
+    wire [DEPTH-1:0] match_lines;
+    integer i;
+
+    always @(posedge clk) begin
+        if (rst) begin
+            for (i = 0; i < DEPTH; i = i + 1)
+                mem[i] <= 0;
+        end else if (write_en) begin
+            mem[write_addr] <= write_data;
+        end
+    end
+
+    genvar idx;
+    generate
+        for (idx = 0; idx < DEPTH; idx = idx + 1) begin: match_gen
+            tcam_line #(.KEY_WIDTH(KEY_WIDTH)) line_inst (
+                .key(search_key),
+                .stored_key(mem[idx]),
+                .match(match_lines[idx])
+            );
+        end
+    endgenerate
+
+    always @(*) begin
+        match_found = 0;
+        match_addr = 0;
+        if (search_en) begin
+            for (i = 0; i < DEPTH; i = i + 1) begin
+                if (match_lines[i] && !match_found) begin
+                    match_found = 1;
+                    match_addr = i[$clog2(DEPTH)-1:0];
+                end
+            end
+        end
+    end
+endmodule
